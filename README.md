@@ -122,6 +122,32 @@ network, no real token — and asserts that a monolith push is rejected, that `-
 not bypass the gate, that a rejected commit never reaches upstream, and that the token never
 appears in the log.
 
+## Machine-wide wiring
+
+To make one machine obtain its GitHub credential *only* through this proxy:
+
+```sh
+# 1. the PAT stays here (mode 600), and the proxy runs as a service
+mkdir -p ~/.config/commit-condom && printf 'CC_PAT=%s\n' "$YOUR_PAT" > ~/.config/commit-condom/pat.env
+chmod 600 ~/.config/commit-condom/pat.env
+# 2. route everything through it
+node bin/cc-wire-machine.js install
+node bin/cc-wire-machine.js status     # confirms: rewrites set, service up, PAT not in the store
+node bin/cc-wire-machine.js revert     # undo, restoring the previous credential store
+```
+
+`install` rewrites every `https://github.com/` URL to the proxy and removes the token from
+`~/.git-credentials`, so the PAT exists in exactly one place. It backs both files up first and
+refuses to run if the proxy's `pat.env` is missing — otherwise it would lock you out.
+
+Two things it does **not** do, by design:
+
+- **It does not enforce the strict commit rules on every repo.** The machine policy is a
+  credential gateway plus a secret scan; `max_files_per_commit` and friends stay opt-in per
+  project, because a two-file cap on every repository on a machine blocks ordinary work.
+- **It does not cover ssh remotes.** `git@github.com:...` is not an http URL and never reaches
+  the proxy. `status` lists any it finds.
+
 ## Layout
 
 ```
