@@ -1,0 +1,22 @@
+{
+  "name": "commit-condom",
+  "version": "0.1.0",
+  "description": "A policy-enforcing git push gate: the agent holds a placeholder token, the proxy holds the real PAT, and every push is checked for chunk size, file count, message format and session budget before it reaches GitHub.",
+  "type": "commonjs",
+  "bin": {
+    "cc": "bin/cc.js",
+    "cc-proxy": "bin/cc-proxy.js"
+  },
+  "main": "src/policy.js",
+  "engines": { "node": ">=20.12" },
+  "scripts": {
+    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js",
+    "test:policy": "node test/policy.test.js",
+    "test:proxy": "node test/proxy.test.js",
+    "test:mcp": "node test/mcp.test.js",
+    "check": "node --check src/policy.js && node --check src/proxy.js && node --check src/config.js && node --check bin/cc.js && node --check bin/cc-proxy.js && node --check mcp/server.js"
+  },
+  "keywords": ["git", "proxy", "policy", "agent", "commit", "conventional-commits", "mcp"],
+  "license": "MIT",
+  "files": ["src", "bin", "hooks", "mcp", "README.md", "LICENSE", "policy.example.json"]
+}
