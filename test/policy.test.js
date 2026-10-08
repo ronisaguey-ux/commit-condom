@@ -177,6 +177,39 @@ t('a NEW ref lists exactly the commits no other ref has', () => {
   assert.deepStrictEqual(P.listCommits(repo, '0'.repeat(40), onMain), []);
 });
 
+t('listNewCommits sees a new-branch push, where listCommits sees nothing', () => {
+  // The client pre-push case that used to fail OPEN. The local branch ref points at the pushed
+  // commit, so `--not --all` (correct on the server) excludes it and returns EMPTY — the gate
+  // then waved the push through. `--not --remotes` is the right base for a push: with no
+  // remote-tracking refs it lists the branch history, which is what a first push must check.
+  const head = g(['rev-parse', 'HEAD']).trim();
+  assert.deepStrictEqual(P.listCommits(repo, '0'.repeat(40), head), [],
+    'precondition: the server-style selector returns nothing when the ref already exists locally');
+  const pushed = P.listNewCommits(repo, head);
+  assert.ok(pushed.length > 0, 'a new-branch push must list commits to check');
+  assert.ok(pushed.includes(head), 'the tip being pushed must be inspected');
+  assert.ok(pushed.every((s, i) => i === 0 || s !== pushed[i - 1]), 'no duplicates');
+});
+
+t('listNewCommits drops what the remote already has', () => {
+  // Once a remote-tracking ref exists, only genuinely new commits are checked — so a re-push of
+  // an unchanged branch is not re-gated, but a new commit on top of it is.
+  const bare = path.join(TMP, 'origin.git');
+  execFileSync('git', ['init', '-q', '--bare', bare]);
+  g(['remote', 'add', 'origin', bare]);
+  g(['push', '-q', 'origin', 'HEAD:refs/heads/main']);
+  g(['fetch', '-q', 'origin']);
+  const before = g(['rev-parse', 'HEAD']).trim();
+  assert.deepStrictEqual(P.listNewCommits(repo, before), [], 'nothing new to check after a push + fetch');
+
+  fs.writeFileSync(path.join(repo, 'src', 'pushed.js'), 'p\n');
+  g(['add', '.']);
+  g(['commit', '-q', '-m', 'feat(core): add pushed (new)']);
+  const after = g(['rev-parse', 'HEAD']).trim();
+  assert.deepStrictEqual(P.listNewCommits(repo, after), [after], 'only the new commit is checked');
+  g(['remote', 'remove', 'origin']);
+});
+
 t('end to end: a 3-file commit is rejected by the real reader, then a split passes', () => {
   fs.writeFileSync(path.join(repo, 'src', 'd.js'), 'd\n');
   fs.writeFileSync(path.join(repo, 'src', 'e.js'), 'e\n');

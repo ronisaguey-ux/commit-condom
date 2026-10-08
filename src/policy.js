@@ -64,9 +64,23 @@ function listCommits(repoDir, oldSha, newSha) {
   return out.split('\n').map((s) => s.trim()).filter(Boolean);
 }
 
-/** Gather everything the rules need for one range, in one pass. */
-function inspectCommits(repoDir, oldSha, newSha, policy = {}) {
-  const shas = listCommits(repoDir, oldSha, newSha);
+/**
+ * Commits a NEW remote ref will introduce, from a working clone.
+ *
+ * A client pre-push hook cannot use `--not --all` the way a server pre-receive hook can: the
+ * local branch ref already points at `newSha`, so `newSha --not --all` excludes the very
+ * commits being pushed and returns EMPTY. That is a silent hole — the gate then passes
+ * everything. `--not --remotes` is the correct base for a push: it drops only what the remote
+ * already has. With no remote-tracking refs at all, it lists the whole branch history, which
+ * is what a first push should check.
+ */
+function listNewCommits(repoDir, newSha) {
+  const out = git(repoDir, ['rev-list', '--reverse', newSha, '--not', '--remotes']);
+  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+/** Turn a list of shas into the commit records the rules read. */
+function inspectShas(repoDir, shas, policy = {}) {
   return shas.map((sha) => {
     const { subject, body } = readMessage(repoDir, sha);
     const files = readNumstat(repoDir, sha);
@@ -90,6 +104,11 @@ function inspectCommits(repoDir, oldSha, newSha, policy = {}) {
     if ((policy.block_diff_patterns || []).length) commit.patch = readPatch(repoDir, sha);
     return commit;
   });
+}
+
+/** Gather everything the rules need for one range, in one pass. */
+function inspectCommits(repoDir, oldSha, newSha, policy = {}) {
+  return inspectShas(repoDir, listCommits(repoDir, oldSha, newSha), policy);
 }
 
 function conventionalRegex(policy) {
@@ -269,7 +288,9 @@ module.exports = {
   ZERO_SHA,
   git,
   listCommits,
+  listNewCommits,
   inspectCommits,
+  inspectShas,
   evaluate,
   formatRejection,
   conventionalRegex,

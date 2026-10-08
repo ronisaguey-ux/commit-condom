@@ -90,14 +90,21 @@ function cmdPrePush() {
   for (const line of input.split('\n').map((l) => l.trim()).filter(Boolean)) {
     const [, localSha, , remoteSha] = line.split(/\s+/);
     const base = (!remoteSha || P.ZERO_SHA.test(remoteSha)) ? null : remoteSha;
-    const range = base ? [`${base}..${localSha}`] : [localSha, '--not', '--all'];
     let commits;
     try {
-      commits = P.inspectCommits(repoDir, base || '0'.repeat(40), localSha, loadPolicy({ repoDir }).policy);
-    } catch {
-      commits = null;
+      // A new remote ref must be compared against the REMOTE, not against local refs: the local
+      // branch points at localSha, so `--not --all` would exclude the commits being pushed and
+      // the gate would silently pass. `listNewCommits` uses `--not --remotes` for that case.
+      commits = base
+        ? P.inspectCommits(repoDir, base, localSha, loadPolicy({ repoDir }).policy)
+        : P.inspectShas(repoDir, P.listNewCommits(repoDir, localSha), loadPolicy({ repoDir }).policy);
+    } catch (e) {
+      // Failing to inspect is NOT the same as passing. Say so loudly, and do not silently
+      // treat an error as "no commits to check" — that is how a gate stops gating.
+      err(`commit-condom: could not inspect ${localSha.slice(0, 8)} (${String(e.message || e).split('\n')[0]}).`);
+      err('  A local hook cannot verify this push; the remote gate still applies.');
+      continue;
     }
-    if (!commits) continue;                    // nothing readable locally; the remote still gates it
     const { policy } = loadPolicy({ repoDir });
     const result = P.evaluate(commits, policy);
     if (!result.ok) { rejected = true; messages.push(P.formatRejection(result)); }
