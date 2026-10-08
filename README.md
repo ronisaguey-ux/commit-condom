@@ -31,7 +31,7 @@ it. Verified in the test suite: a monolith push is rejected, and `--no-verify` c
 
 ## What it enforces
 
-Rules come from `.condom.json` (or `--policy`). All of them are optional; unset means off.
+Rules come from a per-repo policy, or from `--policy`. All of them are optional; unset means off.
 
 | Rule | Example | What the agent is told |
 |---|---|---|
@@ -45,6 +45,24 @@ Rules come from `.condom.json` (or `--policy`). All of them are optional; unset 
 
 Every rejection carries a **fix**, not just a verdict. An agent told only "rejected" retries the
 same monolith; an agent told `git add a.js b.js && git commit -m ...` usually complies.
+
+## Making the policy unskipable
+
+A per-repo `.condom.json` is read by a *client* hook, so `push --no-verify` skips it. To make a
+repo's rules apply no matter what the pusher does, register them with the proxy instead:
+
+```sh
+cc policy set <owner>/<repo> ./my-strict-policy.json   # stored in the proxy's own data dir
+cc policy ls                                            # what is registered
+cc policy rm <owner>/<repo>                             # back to the machine policy
+```
+
+The registry lives outside any working tree (`~/.commit-condom/policies/`), so a push cannot edit,
+weaken or delete it — and the proxy reads it, not the incoming commit. That closes the gap where
+a push carrying `.condom.json`, or a `--no-verify` push, relaxed its own gate. `test/inescapable.test.js`
+drives exactly that scenario over a real git push: a strict repo policy blocks a `--no-verify`
+monolith, the commit never reaches upstream, and the same push is allowed once the registration is
+removed — proving the registry is what blocks it.
 
 ## Install
 
@@ -119,8 +137,7 @@ npm test     # 34 checks: policy engine, proxy end-to-end, MCP tools
 
 The proxy suite runs the whole path against a local bare repository standing in for GitHub — no
 network, no real token — and asserts that a monolith push is rejected, that `--no-verify` does
-not bypass the gate, that a rejected commit never reaches upstream, and that the token never
-appears in the log.
+not bypass the gate, that a rejected commit never reaches upstream, and that the token neverappears in the log.
 
 ## Machine-wide wiring
 

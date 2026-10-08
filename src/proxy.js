@@ -108,17 +108,31 @@ function readBody(req, cap = 512 * 1024 * 1024) {
 }
 
 function createProxy(cfg) {
+  const dataDir = cfg.dataDir || path.join(require('os').homedir(), '.commit-condom');
   const config = {
     upstream: cfg.upstream || 'https://github.com',
     token: cfg.token || '',
-    dataDir: cfg.dataDir || path.join(require('os').homedir(), '.commit-condom'),
+    dataDir,
     policyPath: cfg.policyPath || '',
+    // A per-repo policy registry the PROXY owns. A pusher cannot reach this directory with git,
+    // so a repo registered here is gated by a policy it cannot edit, weaken or delete. This is
+    // what makes the gate inescapable: the alternative — reading .condom.json out of the pushed
+    // tree — would let a push that deletes that file disable its own gate.
+    policyDir: cfg.policyDir || path.join(dataDir, 'policies'),
     log: cfg.log || ((m) => process.stderr.write(m + '\n')),
   };
   if (!config.token) throw new Error('no upstream token: set CC_PAT (or GITHUB_PAT) before starting the proxy');
   const mirrorsDir = path.join(config.dataDir, 'mirrors');
   fs.mkdirSync(mirrorsDir, { recursive: true });
+  fs.mkdirSync(config.policyDir, { recursive: true });
   const locks = new Map();
+
+  /** The policy file in force for one repo, or '' for the built-in defaults. */
+  const policyFor = (owner, repo) => {
+    const registered = path.join(config.policyDir, `${owner}__${repo}.json`);
+    if (fs.existsSync(registered)) return registered;
+    return config.policyPath || '';
+  };
 
   const mirrorFor = (owner, repo) => path.join(mirrorsDir, owner, `${repo}.git`);
   const routeFor = (urlPath) => {
@@ -150,10 +164,16 @@ function createProxy(cfg) {
       if (r.code !== 0) throw new Error(`mirror fetch failed: ${redact(r.stderr).trim().slice(0, 200)}`);
     }
     // The gate lives on the mirror. Re-install it every sync so it cannot be removed and so
-    // a policy change takes effect on the next push.
+    // a policy change takes effect on the next push. The policy is copied from the proxy-owned
+    // registry (or the machine policy), NOT from the incoming commit, so a push cannot carry
+    // in a weaker policy or delete the one in force.
     await run(process.execPath, [CC_BIN, 'install-hooks', '--repo', dir, '--bare']);
-    if (config.policyPath) {
-      try { fs.copyFileSync(config.policyPath, path.join(dir, 'condom.json')); } catch { /* optional */ }
+    const pol = policyFor(owner, repo);
+    const mirrorPolicy = path.join(dir, 'condom.json');
+    if (pol) {
+      try { fs.copyFileSync(pol, mirrorPolicy); } catch { /* optional */ }
+    } else {
+      try { fs.rmSync(mirrorPolicy, { force: true }); } catch { /* none */ }
     }
     return dir;
   }
@@ -171,7 +191,10 @@ function createProxy(cfg) {
     if (!route) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('commit-condom: not a git route\n'); }
     const { owner, repo, path: svcPath } = route;
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-    if (config.policyPath) env.CC_POLICY = config.policyPath;
+    // Hand the gate the repo's policy explicitly. The hook reads CC_POLICY before any file in
+    // the repo, so this wins even if something in the mirror tried to shadow it.
+    const pol = policyFor(owner, repo);
+    if (pol) env.CC_POLICY = pol;
 
     // The service name comes from the URL for a POST, but from the ?service= query for the
     // ref advertisement (whose path is just `info/refs`). Deriving it from the path for
@@ -245,7 +268,7 @@ function createProxy(cfg) {
     }
   });
 
-  return { server, config, mirrorFor, syncMirror, routeFor };
+  return { server, config, mirrorFor, syncMirror, routeFor, policyFor };
 }
 
 module.exports = { createProxy, pkt, redact, authedUrl };

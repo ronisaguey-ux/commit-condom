@@ -253,6 +253,43 @@ function cmdAudit() {
   return v.ok ? 0 : 1;
 }
 
+function cmdPolicy() {
+  // argv[0] is the command ('policy'); the subcommand starts at argv[1].
+  const sub = (argv[1] || '').trim();
+  const dataDir = path.resolve(flag('--data', process.env.CC_DATA || path.join(require('os').homedir(), '.commit-condom')));
+  const dir = path.join(dataDir, 'policies');
+  const key = (s) => String(s).replace(/^\/+|\/+$/g, '').replace(/\//g, '__').replace(/\.git$/, '');
+
+  if (sub === 'ls' || sub === '') {
+    let names = []; try { names = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { /* none */ }
+    out(`policy registry: ${dir}`);
+    if (!names.length) out('  (empty — every repo uses the machine policy, or the built-in defaults)');
+    for (const n of names) out(`  ${n.replace(/__/g, '/').replace(/\.json$/, '')}`);
+    return 0;
+  }
+  if (sub === 'set') {
+    const repo = argv[2]; const file = argv[3];
+    if (!repo || !file) { err('cc policy set <owner/repo> <policy.json> [--data DIR]'); return 2; }
+    if (!fs.existsSync(file)) { err(`cc policy set: ${file} does not exist`); return 2; }
+    try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { err(`cc policy set: ${file} is not valid JSON: ${e.message}`); return 2; }
+    fs.mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, `${key(repo)}.json`);
+    fs.copyFileSync(file, dest);
+    out(`registered ${repo} -> ${dest}`);
+    out('the proxy picks this up on the next push; a pusher cannot edit or delete it with git.');
+    return 0;
+  }
+  if (sub === 'rm') {
+    const repo = argv[2];
+    if (!repo) { err('cc policy rm <owner/repo> [--data DIR]'); return 2; }
+    const dest = path.join(dir, `${key(repo)}.json`);
+    if (!fs.existsSync(dest)) { err(`cc policy rm: ${repo} is not registered`); return 2; }
+    fs.rmSync(dest); out(`removed ${repo}`); return 0;
+  }
+  err(`cc policy: unknown subcommand '${sub}' — use ls | set | rm`);
+  return 2;
+}
+
 function cmdHelp() {
   out(`cc — commit-condom
 
@@ -260,6 +297,7 @@ function cmdHelp() {
   check [--base X --head Y] [--range X..Y] [--repo DIR]   evaluate a range
   plan [--repo DIR]                        propose atomic commits for the working tree
   install-hooks --repo DIR [--bare]        install the hooks
+  policy ls|set|rm [--data DIR]            the proxy's per-repo policy registry (unescapable)
   budget show|set --commits N --lines N|reset
   audit [--json]                           show and verify the ledger chain
 `);
@@ -268,7 +306,7 @@ function cmdHelp() {
 
 const table = {
   'pre-receive': cmdPreReceive, 'pre-push': cmdPrePush, 'commit-msg': cmdCommitMsg,
-  check: cmdCheck, plan: cmdPlan, 'install-hooks': cmdInstallHooks,
+  check: cmdCheck, plan: cmdPlan, 'install-hooks': cmdInstallHooks, policy: cmdPolicy,
   budget: cmdBudget, audit: cmdAudit, help: cmdHelp,
 };
 const fn = table[cmd];
