@@ -58,11 +58,41 @@ cc policy rm <owner>/<repo>                             # back to the machine po
 ```
 
 The registry lives outside any working tree (`~/.commit-condom/policies/`), so a push cannot edit,
-weaken or delete it — and the proxy reads it, not the incoming commit. That closes the gap where
-a push carrying `.condom.json`, or a `--no-verify` push, relaxed its own gate. `test/inescapable.test.js`
-drives exactly that scenario over a real git push: a strict repo policy blocks a `--no-verify`
-monolith, the commit never reaches upstream, and the same push is allowed once the registration is
-removed — proving the registry is what blocks it.
+weaken or delete it — and the proxy reads it, not the incoming commit.
+
+## The simple version: a dummy PAT for agents
+
+The registry is for per-repo overrides. The everyday model is smaller than that:
+
+1. **The real PAT lives only in the proxy.** `~/.config/commit-condom/pat.env`, mode 600, loaded
+   by the service. Nothing else holds it.
+2. **The proxy applies the rules** from `~/.config/commit-condom/policy.json` to every push.
+3. **Every agent gets a dummy PAT** — a token that is deliberately not real:
+
+   ```sh
+   node bin/cc-wire-machine.js agent            # writes the dummy into ~/.git-credentials
+   ```
+
+   Git sends the dummy to the proxy, which ignores the client's credential and forwards with the
+   real PAT. Every push is gated.
+
+That last step is what closes the `--no-verify` hole for good, because the agent has no working
+token of its own. Editing its remote to point at GitHub does not help — GitHub rejects the dummy:
+
+```
+$ git push https://github.com/owner/repo.git        # with the dummy
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed
+```
+
+So the only way an agent can push is through the proxy, and the proxy enforces the rules. Verified
+live and in `test/wire.test.js` and `test/inescapable.test.js`.
+
+**Residual, stated plainly:** the real PAT file is mode 600 owned by the same user the agent runs
+as. An agent that reads arbitrary local files despite instructions could still find it. Keeping
+the token truly out of reach means running the proxy as a different user (or on a different
+machine) than the agent. This design removes the `--no-verify` bypass and the client-hook hole;
+it does not replace an account boundary.
 
 ## Install
 

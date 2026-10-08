@@ -10,7 +10,7 @@
   "main": "src/policy.js",
   "engines": { "node": ">=20.12" },
   "scripts": {
-    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/inescapable.test.js",
+    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/wire.test.js && node test/inescapable.test.js",
     "test:policy": "node test/policy.test.js",
     "test:proxy": "node test/proxy.test.js",
     "test:mcp": "node test/mcp.test.js",
