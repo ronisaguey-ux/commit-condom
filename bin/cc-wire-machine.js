@@ -39,6 +39,26 @@ function credHasGithub() {
   try { return /github\.com/.test(fs.readFileSync(CRED, 'utf8')); } catch { return false; }
 }
 
+/** The real PAT, read from the file the proxy service loads. Never printed. */
+function realPat() {
+  try {
+    const m = fs.readFileSync(path.join(HOME, '.config', 'commit-condom', 'pat.env'), 'utf8')
+      .match(/(?:CC_PAT|GITHUB_PAT)\s*=\s*(\S+)/);
+    return m ? m[1] : '';
+  } catch { return ''; }
+}
+
+/**
+ * The security-relevant fact is not "is there a github credential" but "is the REAL PAT in it".
+ * A dummy line looks the same at a glance, so compare against the actual token rather than
+ * reporting mere presence.
+ */
+function credHasRealPat() {
+  const real = realPat();
+  if (!real) return false;
+  try { return fs.readFileSync(CRED, 'utf8').includes(real); } catch { return false; }
+}
+
 function sshRemotes() {
   const found = [];
   const roots = [path.join(HOME, 'Roni_workspace')];
@@ -67,15 +87,17 @@ function cmdStatus() {
     rewrites: r,
     github_through_proxy: wired,
     service: svc,
-    pat_in_credential_store: credHasGithub(),
+    credential_store_has_github: credHasGithub(),
+    REAL_PAT_in_credential_store: credHasRealPat(),
     ssh_remotes_that_bypass: sshRemotes(),
   };
   console.log(JSON.stringify(out, null, 2));
-  return wired && !credHasGithub() ? 0 : 1;
+  // Healthy: routed through the proxy, and the real PAT is NOT sitting in the agent's store.
+  return wired && !credHasRealPat() ? 0 : 1;
 }
 
 function cmdInstall() {
-  if (credHasGithub()) {
+  if (credHasRealPat()) {
     // Move the token into the proxy before removing it from the store, or the machine loses auth.
     const env = path.join(HOME, '.config', 'commit-condom', 'pat.env');
     if (!fs.existsSync(env)) {
@@ -100,8 +122,62 @@ function cmdInstall() {
   const kept = lines.filter((l) => l.trim() && !l.includes('github.com'));
   fs.writeFileSync(CRED, kept.length ? kept.join('\n') + '\n' : '', { mode: 0o600 });
 
-  console.log(JSON.stringify({ backup: bk, rewrites: rewrites(), pat_in_credential_store: credHasGithub() }, null, 2));
-  return 0;
+  console.log(JSON.stringify({ backup: bk, rewrites: rewrites(), REAL_PAT_in_credential_store: credHasRealPat() }, null, 2));
+
+  // Leave the agent a DUMMY token, so git has a credential to send and a direct push still fails.
+  return cmdAgent();
+}
+
+/**
+ * Give the agent a DUMMY PAT.
+ *
+ * The real token lives only in the proxy. The agent's credential store holds a token that is
+ * deliberately not real, so:
+ *   - going THROUGH the proxy works (the proxy ignores the client's credential and forwards with
+ *     the real PAT), and every push is gated by the rules;
+ *   - going DIRECTLY to GitHub fails — GitHub rejects a dummy, so the agent cannot step around
+ *     the proxy by editing its remote.
+ * One real token behind the gate, and nothing but a useless one in front of it.
+ */
+const DUMMY_DEFAULT = 'ghp_dummy_agent_token_not_real_000000000000';
+
+function cmdAgent() {
+  const i = process.argv.indexOf('--dummy');
+  const token = i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : DUMMY_DEFAULT;
+
+  // Refuse if the real PAT is not behind the proxy, or a dummy would lock the agent out entirely.
+  const patEnv = path.join(HOME, '.config', 'commit-condom', 'pat.env');
+  if (!fs.existsSync(patEnv)) {
+    console.error(`refusing: ${patEnv} does not exist — the proxy has no real PAT, so a dummy would lock the agent out of every push.`);
+    return 2;
+  }
+  const real = realPat();
+  if (real && token === real) {
+    console.error('refusing: the dummy token is identical to the real PAT — that is not a dummy.');
+    return 2;
+  }
+
+  const wired = rewrites().some((x) => x.includes(PROXY.replace(/\/$/, '')));
+  if (!wired) {
+    console.error('refusing: github.com is not rewritten to the proxy. Run `install` first.');
+    return 2;
+  }
+
+  // Write the dummy for github.com only; any other host's credential is preserved.
+  const lines = fs.existsSync(CRED) ? fs.readFileSync(CRED, 'utf8').split('\n') : [];
+  const kept = lines.filter((l) => l.trim() && !l.includes('github.com'));
+  kept.push(`https://x-access-token:${token}@github.com`);
+  fs.writeFileSync(CRED, kept.join('\n') + '\n', { mode: 0o600 });
+
+  const realLeaked = Boolean(real) && fs.readFileSync(CRED, 'utf8').includes(real);
+  console.log(JSON.stringify({
+    dummy_installed: true,
+    dummy_token_hint: token.slice(0, 12) + '…',
+    real_pat_in_agent_store: realLeaked,
+    github_through_proxy: wired,
+    note: 'The agent can push only through the proxy. A direct push to GitHub fails, because the dummy is not a real token.',
+  }, null, 2));
+  return realLeaked ? 1 : 0;
 }
 
 function cmdRevert() {
@@ -122,7 +198,7 @@ function cmdRevert() {
 }
 
 const cmd = process.argv[2] || 'status';
-const table = { status: cmdStatus, install: cmdInstall, revert: cmdRevert };
+const table = { status: cmdStatus, install: cmdInstall, revert: cmdRevert, agent: cmdAgent };
 const fn = table[cmd];
-if (!fn) { console.error('usage: cc-wire-machine <status|install|revert>'); process.exit(2); }
+if (!fn) { console.error('usage: cc-wire-machine <status|install|agent|revert>'); process.exit(2); }
 process.exit(fn() || 0);
