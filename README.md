@@ -111,6 +111,10 @@ git remote set-url origin http://127.0.0.1:8877/<owner>/<repo>.git
 The proxy clones a mirror on first use and keeps it in sync. Reads (clone/fetch) and writes
 both go through it, so the agent needs no GitHub credential at all.
 
+It keeps a real PAT's behaviour, including branch and tag deletion: a ref the client removes in
+the push is removed upstream too, and only that ref — the forward deletes exactly what the client
+deleted, never a blanket prune that could drop a branch published upstream in between.
+
 Optional, for an agent you can modify: install the fast local mirror of the gate and the flag
 guard, so the agent learns about a bad commit at the command instead of at the push.
 
