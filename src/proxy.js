@@ -178,11 +178,22 @@ function createProxy(cfg) {
     return dir;
   }
 
-  /** Push the refs the mirror just advanced up to upstream, with the PAT. */
+  /** Push the refs the mirror just advanced up to upstream, with the PAT.
+   *
+   *  Namespaces, not --mirror. A mirror clone carries refs/pull/* and refs/merge-requests/*
+   *  copied from the remote, and GitHub refuses to update those hidden refs ("deny updating a
+   *  hidden ref"). `--mirror` therefore exits non-zero on EVERY push even though the branch
+   *  landed, so the proxy logged "forward to upstream failed" for a push that had in fact
+   *  succeeded - and the caller could not tell a real rejection from this. Measured against
+   *  webchat-to-api-harness: `main -> main` in the same output as three hidden-ref rejections.
+   *  Push exactly the two namespaces a user can own, and a partial failure is then real.
+   */
   async function forward(owner, repo) {
     const dir = mirrorFor(owner, repo);
     const url = authedUrl(config.upstream, owner, repo, config.token);
-    const r = await run('git', ['-C', dir, 'push', '--quiet', url, '--mirror'], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    const r = await run('git',
+      ['-C', dir, 'push', '--quiet', url, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'],
+      { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
     if (r.code !== 0) throw new Error(`forward to upstream failed: ${redact(r.stderr).trim().slice(0, 300)}`);
   }
 
