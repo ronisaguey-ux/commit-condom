@@ -144,6 +144,26 @@ waitForListen(() => {
     assert.match(git(UP, ['branch', '--list']), /main/, 'main must survive');
   });
 
+  t('a FORCE push updates upstream (parity with a real PAT)', () => {
+    git(clone, ['checkout', '-q', 'main']);
+    git(clone, ['checkout', '-q', '-b', 'forced']);
+    fs.writeFileSync(path.join(clone, 'forced.md'), 'one\n');
+    git(clone, ['add', 'forced.md']);
+    git(clone, ['commit', '-q', '-m', 'feat: add forced note (v1)']);
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    git(clone, ['commit', '-q', '--amend', '-m', 'feat: add forced note (v2 amended)']);
+    execFileSync('git', ['-C', clone, 'push', '-q', '--force', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(git(UP, ['log', '--oneline', 'forced']), /v2 amended/, 'the amended commit must be upstream');
+  });
+
+  t('a TAG pushed and then deleted matches a real PAT', () => {
+    git(clone, ['tag', 'v-test']);
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(git(UP, ['tag', '--list']), /v-test/, 'the tag must be upstream');
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', '--delete', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.ok(!/v-test/.test(git(UP, ['tag', '--list'])), 'the tag must be gone upstream');
+  });
+
   finish(fail ? 1 : 0);
 });
 
