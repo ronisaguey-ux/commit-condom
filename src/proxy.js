@@ -178,6 +178,13 @@ function createProxy(cfg) {
     return dir;
   }
 
+  /** Names of the refs under a namespace, e.g. 'refs/heads/'. Used to see what a push deleted. */
+  async function refNames(dir, prefix) {
+    const r = await run('git', ['-C', dir, 'for-each-ref', '--format=%(refname)', prefix]);
+    if (r.code !== 0) return new Set();
+    return new Set(r.stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+  }
+
   /** Push the refs the mirror just advanced up to upstream, with the PAT.
    *
    *  Namespaces, not --mirror. A mirror clone carries refs/pull/* and refs/merge-requests/*
@@ -187,13 +194,20 @@ function createProxy(cfg) {
    *  succeeded - and the caller could not tell a real rejection from this. Measured against
    *  webchat-to-api-harness: `main -> main` in the same output as three hidden-ref rejections.
    *  Push exactly the two namespaces a user can own, and a partial failure is then real.
+   *
+   *  `deletedRefs` carries the refs the client removed in this push (a delete refspec, e.g.
+   *  `git push origin --delete branch`). The namespaces above only ever ADD or UPDATE refs, so
+   *  without these a deletion would land on the mirror and never reach upstream - the one place
+   *  the proxy behaved worse than a real PAT. Delete exactly the refs the client removed, which
+   *  is safe: a blanket `--prune` would remove any branch published upstream between the sync
+   *  and the forward, whereas these are known to have existed when the mirror was synced.
    */
-  async function forward(owner, repo) {
+  async function forward(owner, repo, deletedRefs = []) {
     const dir = mirrorFor(owner, repo);
     const url = authedUrl(config.upstream, owner, repo, config.token);
-    const r = await run('git',
-      ['-C', dir, 'push', '--quiet', url, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'],
-      { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    const args = ['-C', dir, 'push', '--quiet', url, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'];
+    for (const ref of deletedRefs) args.push(`:${ref}`);
+    const r = await run('git', args, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
     if (r.code !== 0) throw new Error(`forward to upstream failed: ${redact(r.stderr).trim().slice(0, 300)}`);
   }
 
@@ -254,19 +268,30 @@ function createProxy(cfg) {
       // ── the write path ──────────────────────────────────────────────────────────────
       const result = await withLock(`${owner}/${repo}`, async () => {
         await syncMirror(owner, repo);
-        const rr = await runService(mirrorFor(owner, repo), 'receive-pack', body, env);
+        const mirror = mirrorFor(owner, repo);
+        // Snapshot the refs the mirror holds (it was just synced, so this IS upstream). After the
+        // client's push, anything missing is something the client deleted - the only reliable way
+        // to know, because the receive-pack body would otherwise have to be parsed by hand.
+        const headsBefore = await refNames(mirror, 'refs/heads/');
+        const tagsBefore = await refNames(mirror, 'refs/tags/');
+        const rr = await runService(mirror, 'receive-pack', body, env);
         if (rr.code !== 0) {
           config.log(`✗ ${owner}/${repo}: gate rejected the push (${redact(rr.stderr).trim().slice(0, 160)})`);
           return { body: rr.body, forwarded: false };
         }
+        const headsAfter = await refNames(mirror, 'refs/heads/');
+        const tagsAfter = await refNames(mirror, 'refs/tags/');
+        const deletedRefs = [...headsBefore].filter((r) => !headsAfter.has(r))
+          .concat([...tagsBefore].filter((r) => !tagsAfter.has(r)));
         try {
-          await forward(owner, repo);
+          await forward(owner, repo, deletedRefs);
         } catch (e) {
           // The mirror accepted but upstream did not: the client must NOT be told it succeeded.
           config.log(`✗ ${owner}/${repo}: ${redact(e.message)}`);
           return { body: rr.body, forwarded: false, error: e.message };
         }
-        config.log(`✓ ${owner}/${repo}: push accepted and forwarded`);
+        const note = deletedRefs.length ? ` (deleted ${deletedRefs.length} ref${deletedRefs.length > 1 ? 's' : ''})` : '';
+        config.log(`✓ ${owner}/${repo}: push accepted and forwarded${note}`);
         return { body: rr.body, forwarded: true };
       });
 

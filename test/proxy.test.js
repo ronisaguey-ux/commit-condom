@@ -122,6 +122,28 @@ waitForListen(() => {
     assert.ok(!proxyOut.includes('placeholder-token-for-test'), proxyOut.slice(0, 400));
   });
 
+  // ── deletions must behave exactly like a real PAT ───────────────────────────────
+  t('a NEW branch pushed through the proxy lands upstream', () => {
+    git(clone, ['checkout', '-q', '-b', 'feature']);
+    fs.writeFileSync(path.join(clone, 'feature.md'), 'f\n');
+    git(clone, ['add', 'feature.md']);
+    git(clone, ['commit', '-q', '-m', 'feat: add feature notes (needs a branch)']);
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    assert.match(git(UP, ['branch', '--list']), /feature/, 'the new branch must be upstream');
+  });
+
+  t('a branch DELETED through the proxy is removed upstream (real-PAT parity)', () => {
+    execFileSync('git', ['-C', clone, 'push', '-q', 'origin', '--delete', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const branches = git(UP, ['branch', '--list']);
+    assert.ok(!/feature/.test(branches), 'feature must be gone upstream: ' + branches);
+  });
+
+  t('a deletion leaves every other branch alone (non-vacuity)', () => {
+    // Guards against a blanket `--prune` forward: the deletion above must not have taken anything
+    // beyond the ref the client named.
+    assert.match(git(UP, ['branch', '--list']), /main/, 'main must survive');
+  });
+
   finish(fail ? 1 : 0);
 });
 
