@@ -221,6 +221,23 @@ t('end to end: a 3-file commit is rejected by the real reader, then a split pass
   assert.ok(!r.ok && codes(r).includes('NEEDS_SPLIT'), JSON.stringify(codes(r)));
 });
 
+// ── the pattern compiler must accept the PCRE inline flags the patterns are written with ──
+// Regression: JavaScript's RegExp rejects `(?i)`, so the old code skipped EVERY default secret
+// pattern and the scan never fired. A gate that checks nothing is worse than no gate.
+t('compilePattern accepts (?i) inline-flag patterns', () => {
+  const rx = P.compilePattern('(?i)(ghp_[A-Za-z0-9]{20,})');
+  assert.ok(rx.test('ghp_' + 'A'.repeat(24)), 'the (?i) pattern must match case-insensitively');
+  assert.ok(rx.test('GHP_' + 'a'.repeat(24)), 'and must be case-insensitive');
+});
+
+t('the DEFAULT ghp_ pattern actually blocks a leaked token end to end', () => {
+  const p = { ...POLICY, block_diff_patterns: ['(?i)(ghp_[A-Za-z0-9]{20,})'] };
+  const commits = [{ sha: 'a', short: 'a', subject: 'feat: x (y)', files: [], added: 0, deleted: 0, lines: 0,
+    patch: 'diff --git a/x b/x\n+token = ghp_' + 'B'.repeat(30) }];
+  const r = P.evaluate(commits, p);
+  assert.ok(!r.ok && codes(r).includes('BLOCKED_PATTERN'), JSON.stringify(codes(r)));
+});
+
 console.log('\n' + (pass + fail) + ' checks, ' + pass + ' passed, ' + fail + ' failed');
 fs.rmSync(TMP, { recursive: true, force: true });
 process.exit(fail ? 1 : 0);

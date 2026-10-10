@@ -120,6 +120,31 @@ function conventionalRegex(policy) {
 }
 
 /**
+ * Compile a configured pattern.
+ *
+ * The block patterns are written with PCRE inline flags — `(?i)(ghp_…)` — because that is how
+ * they read as a human writes them, and every other tool in this space accepts that syntax.
+ * JavaScript's RegExp does NOT: `new RegExp('(?i)…')` throws "Invalid group". The old code
+ * caught that and `continue`d, which meant every default secret pattern was silently skipped and
+ * the scan never fired — a gate that reported success while checking nothing.
+ *
+ * So translate the leading inline flags into the RegExp flag argument. Only flags that JS
+ * accepts are mapped; anything unrecognised is dropped rather than left to throw.
+ */
+function compilePattern(pat) {
+  let src = String(pat);
+  let flags = '';
+  const m = src.match(/^\(\?([a-zA-Z]+)\)/);
+  if (m) {
+    if (m[1].includes('i')) flags += 'i';
+    if (m[1].includes('m')) flags += 'm';
+    if (m[1].includes('s')) flags += 's';
+    src = src.slice(m[0].length);
+  }
+  return new RegExp(src, flags);
+}
+
+/**
  * Evaluate a set of commits against the policy.
  * Returns { ok, violations, stats }. `budget` is { commits, lines } already used this
  * session (see ledger.js); pass it to enforce session_budget.
@@ -183,7 +208,7 @@ function evaluate(commits, policy = {}, { budget } = {}) {
 
     for (const pat of policy.block_diff_patterns || []) {
       let rx;
-      try { rx = new RegExp(pat); } catch { continue; }
+      try { rx = compilePattern(pat); } catch { continue; }
       const hit = rx.exec(c.patch || '');
       if (hit) {
         const what = hit[0].length > 40 ? hit[0].slice(0, 40) + '…' : hit[0];
@@ -294,5 +319,6 @@ module.exports = {
   evaluate,
   formatRejection,
   conventionalRegex,
+  compilePattern,
   firstType,
 };
