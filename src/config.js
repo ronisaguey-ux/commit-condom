@@ -19,6 +19,12 @@ const path = require('path');
 const DEFAULTS = {
   max_diff_lines: 400,
   max_files_per_commit: 2,
+  // A brand-new repository's first push is a legitimate bulk import, not a monolith to split:
+  // there is no history to keep clean yet. These limits replace the per-commit ones while the
+  // repo has nothing published. The secret scan and the conventional-commit rule still apply —
+  // only the size ceiling relaxes.
+  new_repo_max_files: 150,
+  new_repo_max_lines: 15000,
   require_conventional: true,
   allowed_types: ['feat', 'fix', 'refactor', 'test', 'docs', 'chore', 'perf', 'build', 'ci', 'style', 'revert'],
   max_subject_length: 72,

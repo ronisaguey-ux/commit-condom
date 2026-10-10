@@ -36,9 +36,39 @@ function flag(name, def = undefined) {
 function out(s) { process.stdout.write(s + '\n'); }
 function err(s) { process.stderr.write(s + '\n'); }
 
-function gate(repoDir, base, head, ref) {
-  const { policy, source } = loadPolicy({ repoDir });
-  const commits = P.inspectCommits(repoDir, base, head, policy);
+/** True when a namespace holds no refs — i.e. nothing is published there yet. */
+function noRefs(repoDir, ns) {
+  try {
+    return execFileSync('git', ['-C', repoDir, 'for-each-ref', ns], { encoding: 'utf8' }).trim() === '';
+  } catch {
+    return false;   // if we cannot tell, do NOT assume the looser rule
+  }
+}
+
+/** The policy a repo actually gets checked against, given whether it is brand new. */
+function effectivePolicy(policy, isNewRepo) {
+  if (!isNewRepo) return policy;
+  const p = { ...policy };
+  if (policy.new_repo_max_files != null) p.max_files_per_commit = policy.new_repo_max_files;
+  if (policy.new_repo_max_lines != null) p.max_diff_lines = policy.new_repo_max_lines;
+  // A bulk import is one commit by nature — the chunking rule ("N files need M commits") exists
+  // to stop a monolith in a repo that HAS history, and has no history to protect on a first push.
+  p.chunking = {};
+  return p;
+}
+
+function gate(repoDir, base, head, ref, { isNewRepo = false, useRemoteBase = false } = {}) {
+  const loaded = loadPolicy({ repoDir });
+  const policy = effectivePolicy(loaded.policy, isNewRepo);
+  const source = loaded.source;
+  // A zero base means "a new ref". On the server the right base is `--not --all` (the mirror's
+  // refs are the remote's). In a WORKING clone it must be `--not --remotes`: the local ref
+  // already points at `head`, so `--not --all` excludes the very commits under review and the
+  // check passes vacuously. That is the same hole the pre-push hook had, and it must not be
+  // left open in `cc check` either.
+  const commits = (useRemoteBase && P.ZERO_SHA.test(base || ''))
+    ? P.inspectShas(repoDir, P.listNewCommits(repoDir, head), policy)
+    : P.inspectCommits(repoDir, base, head, policy);
   const budget = policy.session_budget ? L.totals(repoDir) : undefined;
   const result = P.evaluate(commits, policy, { budget });
   if (!result.ok) {
@@ -65,12 +95,15 @@ function cmdPreReceive() {
     const [oldSha, newSha, ref] = line.split(/\s+/);
     if (!ref || !ref.startsWith('refs/heads/')) continue;            // only branches carry commits to review
     if (P.ZERO_SHA.test(newSha)) continue;                            // a deletion has nothing to check
-    const g = gate(repoDir, oldSha, newSha, ref);
+    // A mirror with no branches yet is a brand-new repo: its first push is a bulk import.
+    const isNewRepo = noRefs(repoDir, 'refs/heads/');
+    const g = gate(repoDir, oldSha, newSha, ref, { isNewRepo });
     if (!g.ok) {
       rejected = true;
       messages.push(g.text);
     } else {
-      messages.push(`commit-condom: ${g.result.stats.commits} commit(s) accepted on ${ref} (${g.result.stats.files} files, ${g.result.stats.lines} lines).`);
+      const note = isNewRepo ? ' [new repo: bulk import allowed]' : '';
+      messages.push(`commit-condom: ${g.result.stats.commits} commit(s) accepted on ${ref} (${g.result.stats.files} files, ${g.result.stats.lines} lines).${note}`);
     }
   }
   for (const m of messages) {
@@ -105,7 +138,9 @@ function cmdPrePush() {
       err('  A local hook cannot verify this push; the remote gate still applies.');
       continue;
     }
-    const { policy } = loadPolicy({ repoDir });
+    const { policy: rawPolicy } = loadPolicy({ repoDir });
+    // No remote-tracking refs yet = the first push to a new remote = a new repo's bulk import.
+    const policy = effectivePolicy(rawPolicy, noRefs(repoDir, 'refs/remotes/'));
     const result = P.evaluate(commits, policy);
     if (!result.ok) { rejected = true; messages.push(P.formatRejection(result)); }
   }
@@ -143,7 +178,8 @@ function cmdCheck() {
     try { base = execFileSync('git', ['-C', repoDir, 'rev-parse', `${head}~1`], { encoding: 'utf8' }).trim(); }
     catch { base = '0'.repeat(40); }
   }
-  const g = gate(repoDir, base, head, flag('--ref') || '');
+  const g = gate(repoDir, base, head, flag('--ref') || '',
+    { isNewRepo: noRefs(repoDir, 'refs/remotes/'), useRemoteBase: true });
   out(`policy: ${g.source}`);
   out(`range: ${base.slice(0, 8)}..${String(head).slice(0, 8)}  ->  ${g.result.stats.commits} commit(s), ${g.result.stats.files} file(s), ${g.result.stats.lines} line(s)`);
   if (g.ok) { out('PASS — no policy violations.'); return 0; }

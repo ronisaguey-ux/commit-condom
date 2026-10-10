@@ -8,16 +8,34 @@
     "cc-proxy": "bin/cc-proxy.js"
   },
   "main": "src/policy.js",
-  "engines": { "node": ">=20.12" },
+  "engines": {
+    "node": ">=20.12"
+  },
   "scripts": {
-    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/wire.test.js && node test/inescapable.test.js",
+    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/wire.test.js && node test/inescapable.test.js && node test/newrepo.test.js",
     "test:policy": "node test/policy.test.js",
     "test:proxy": "node test/proxy.test.js",
     "test:mcp": "node test/mcp.test.js",
     "test:inescapable": "node test/inescapable.test.js",
     "check": "node --check src/policy.js && node --check src/proxy.js && node --check src/config.js && node --check bin/cc.js && node --check bin/cc-proxy.js && node --check mcp/server.js"
   },
-  "keywords": ["git", "proxy", "policy", "agent", "commit", "conventional-commits", "mcp"],
+  "keywords": [
+    "git",
+    "proxy",
+    "policy",
+    "agent",
+    "commit",
+    "conventional-commits",
+    "mcp"
+  ],
   "license": "MIT",
-  "files": ["src", "bin", "hooks", "mcp", "README.md", "LICENSE", "policy.example.json"]
+  "files": [
+    "src",
+    "bin",
+    "hooks",
+    "mcp",
+    "README.md",
+    "LICENSE",
+    "policy.example.json"
+  ]
 }
