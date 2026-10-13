@@ -16,7 +16,7 @@ const L = require('../src/ledger');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-mcp-'));
 const repo = path.join(TMP, 'r');
 fs.mkdirSync(repo, { recursive: true });
-const g = (a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+const g = (a) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', repo, ...a], { encoding: 'utf8' });
 g(['init', '-q', '-b', 'main']);
 g(['config', 'user.email', 'a@b']);
 g(['config', 'user.name', 't']);
