@@ -100,7 +100,17 @@ t('chunking: the same 3 files across 2 commits passes', () => {
   assert.strictEqual(P.evaluate([a, b], POLICY).ok, true, JSON.stringify(codes(P.evaluate([a, b], POLICY))));
 });
 
-t('a session budget breach is rejected', () => {
+t('a budget is NOT enforced: only the per-commit rules apply', () => {
+  // There is no session budget by DEFAULT any more - a long-but-clean branch must not be
+  // refused for its length. The per-commit rules are the only gate.
+  const { DEFAULTS } = require('../src/config');
+  assert.strictEqual(DEFAULTS.session_budget, undefined, 'DEFAULTS must not carry a budget');
+  const bare = P.evaluate([commit()], POLICY);
+  assert.strictEqual(bare.ok, true, 'a clean commit passes with no budget passed in');
+  assert.deepStrictEqual(codes(bare), []);
+});
+
+t('a budget supplied by a caller is still honoured (opt-in only)', () => {
   const r = P.evaluate([commit()], POLICY, { budget: { commits: 10, lines: 0 } });
   assert.deepStrictEqual(codes(r), ['BUDGET_COMMITS']);
 });
