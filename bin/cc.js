@@ -154,15 +154,34 @@ function cmdCommitMsg() {
   if (!file) { err('cc commit-msg: need the message file path'); return 2; }
   const repoDir = process.cwd();
   const { policy } = loadPolicy({ repoDir });
-  if (!policy.require_conventional) return 0;
-  const subject = fs.readFileSync(file, 'utf8').split('\n')[0].trim();
-  if (!P.conventionalRegex(policy).test(subject)) {
-    err(`commit-condom: "${subject}" is not a conventional commit.`);
-    err(`Use "type(scope): what (why)". Allowed types: ${(policy.allowed_types || []).join(', ')}.`);
-    return 1;
+  const raw = fs.readFileSync(file, 'utf8');
+  const subject = raw.split('\n')[0].trim();
+  const body = raw.split('\n').slice(1).join('\n').trim();
+
+  if (policy.require_conventional) {
+    if (!P.conventionalRegex(policy).test(subject)) {
+      err(`commit-condom: "${subject}" is not a conventional commit.`);
+      err(`Use "type(scope): what (why)". Allowed types: ${(policy.allowed_types || []).join(', ')}.`);
+      return 1;
+    }
+    if (subject.length > Number(policy.max_subject_length || 0)) {
+      err(`commit-condom: subject is ${subject.length} chars (max ${policy.max_subject_length}). Shorten it; put detail in the body.`);
+      return 1;
+    }
   }
-  if (subject.length > Number(policy.max_subject_length || 0)) {
-    err(`commit-condom: subject is ${subject.length} chars (max ${policy.max_subject_length}). Shorten it; put detail in the body.`);
+
+  // Staged-content rules. The proxy enforces these at PUSH time, which means a violating
+  // commit is still created and only dies later, once it is in the reflog and the agent has
+  // moved on. Evaluating the index here applies the SAME rules one commit earlier, so a commit
+  // the gate would reject is never born. A message-only hook leaves the file-count, diff-size
+  // and secret rules unenforced locally — the three that actually bite.
+  const staged = P.inspectStaged(repoDir, { subject, body }, policy);
+  const result = P.evaluate([staged], policy);
+  if (!result.ok) {
+    err('commit-condom: this commit would be REJECTED ON PUSH — refusing it locally so it is never created.');
+    err(P.formatRejection(result).split('\n')
+      .filter((l) => !/enforced at the remote/.test(l))
+      .join('\n'));
     return 1;
   }
   return 0;
