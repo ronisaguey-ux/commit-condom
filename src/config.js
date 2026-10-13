@@ -37,7 +37,6 @@ const DEFAULTS = {
     '(?i)(sk-[A-Za-z0-9]{20,})',
     '(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----',
   ],
-  session_budget: { max_commits: 10, max_total_lines: 2000 },
 };
 
 function _candidatePaths(repoDir, explicit) {
