@@ -12,8 +12,8 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "test": "node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/wire.test.js && node test/inescapable.test.js && node test/newrepo.test.js",
-    "test:policy": "node test/policy.test.js",
+    "test": "CC_NO_MACHINE_POLICY=1 node test/policy.test.js && node test/proxy.test.js && node test/mcp.test.js && node test/wire.test.js && node test/inescapable.test.js && CC_NO_MACHINE_POLICY=1 node test/newrepo.test.js",
+    "test:policy": "CC_NO_MACHINE_POLICY=1 node test/policy.test.js",
     "test:proxy": "node test/proxy.test.js",
     "test:mcp": "node test/mcp.test.js",
     "test:inescapable": "node test/inescapable.test.js",

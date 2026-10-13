@@ -41,7 +41,7 @@ const DEFAULTS = {
 
 function _candidatePaths(repoDir, explicit) {
   const out = [];
-  if (explicit) out.push(explicit);
+  if (explicit) { out.push(explicit); return out; }
   if (process.env.CC_POLICY) out.push(process.env.CC_POLICY);
   if (repoDir) {
     out.push(path.join(repoDir, '.condom.json'));
@@ -53,8 +53,14 @@ function _candidatePaths(repoDir, explicit) {
   // fell through to the built-in defaults — so the operator's own block_diff_patterns at
   // ~/.config/commit-condom/policy.json were never enforced on a `git commit`, and editing that
   // file changed nothing until a push. Order matters: per-repo still wins.
+  // Machine-wide policy, opt-out: a caller that must see BUILT-IN DEFAULTS (the test suite)
+  // sets CC_NO_MACHINE_POLICY=1 so the operator's own overrides cannot steer it.
+  // CC_HOME is an EXPLICIT caller override and always applies; only the operator's own
+  // ~/.config policy is the thing a hermetic caller opts out of.
   if (process.env.CC_HOME) out.push(path.join(process.env.CC_HOME, 'policy.json'));
-  out.push(path.join(os.homedir(), '.config', 'commit-condom', 'policy.json'));
+  if (!process.env.CC_NO_MACHINE_POLICY) {
+    out.push(path.join(os.homedir(), '.config', 'commit-condom', 'policy.json'));
+  }
   return out;
 }
 
