@@ -22,7 +22,7 @@ const t = (name, fn) => {
 
 function mkrepo() {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-newrepo-'));
-  const g = (a) => execFileSync('git', ['-C', d, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const g = (a) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', d, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   g(['init', '-q', '-b', 'main']);
   g(['config', 'user.email', 't@t.t']);
   g(['config', 'user.name', 't']);
