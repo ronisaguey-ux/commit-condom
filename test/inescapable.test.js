@@ -28,7 +28,7 @@ const GH = path.join(TMP, 'github');
 const OWNER = 'acme', REPO = 'demo';
 const UP = path.join(GH, OWNER, `${REPO}.git`);
 
-const git = (cwd, args, opts = {}) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', ...opts });
+const git = (cwd, args, opts = {}) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', cwd, ...args], { encoding: 'utf8', ...opts });
 
 let pass = 0, fail = 0;
 const t = (name, fn) => {
@@ -38,9 +38,9 @@ const t = (name, fn) => {
 
 // ── fake GitHub + seed ──────────────────────────────────────────────────────────
 fs.mkdirSync(path.dirname(UP), { recursive: true });
-execFileSync('git', ['init', '-q', '--bare', '-b', 'main', UP]);
+execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '-q', '--bare', '-b', 'main', UP]);
 const seed = path.join(TMP, 'seed');
-execFileSync('git', ['init', '-q', '-b', 'main', seed]);
+execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '-q', '-b', 'main', seed]);
 git(seed, ['config', 'user.email', 'a@b']); git(seed, ['config', 'user.name', 't']);
 fs.writeFileSync(path.join(seed, 'README.md'), 'seed\n');
 git(seed, ['add', '.']); git(seed, ['commit', '-q', '-m', 'chore: seed (fixture)']);
@@ -103,7 +103,7 @@ function finish(code) {
 
 waitForListen(() => {
   t('a client clones through the proxy', () => {
-    execFileSync('git', ['clone', '-q', URL_, clone], { encoding: 'utf8' });
+    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'clone', '-q', URL_, clone], { encoding: 'utf8' });
     assert.match(git(clone, ['log', '--oneline']), /seed/);
   });
   git(clone, ['config', 'user.email', 'a@b']); git(clone, ['config', 'user.name', 't']);
