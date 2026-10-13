@@ -18,7 +18,7 @@ const GH = path.join(TMP, 'github');
 const OWNER = 'acme', REPO = 'demo';
 const UP = path.join(GH, OWNER, `${REPO}.git`);
 
-const git = (cwd, args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', cwd, ...args], { encoding: 'utf8' });
+const git = (cwd, args) => execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', cwd, ...args], { encoding: 'utf8' });
 
 let pass = 0, fail = 0;
 const results = [];
@@ -29,9 +29,9 @@ const t = (name, fn) => {
 
 // ── build the fake GitHub and a seed ────────────────────────────────────────────
 fs.mkdirSync(path.dirname(UP), { recursive: true });
-execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '-q', '--bare', '-b', 'main', UP]);
+execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', 'init', '-q', '--bare', '-b', 'main', UP]);
 const seed = path.join(TMP, 'seed');
-execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '-q', '-b', 'main', seed]);
+execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', 'init', '-q', '-b', 'main', seed]);
 git(seed, ['config', 'user.email', 'a@b']); git(seed, ['config', 'user.name', 't']);
 fs.writeFileSync(path.join(seed, 'README.md'), 'seed\n');
 git(seed, ['add', '.']); git(seed, ['commit', '-q', '-m', 'chore: seed (fixture)']);
@@ -70,7 +70,7 @@ waitForListen(() => {
   // ── clone THROUGH the proxy ───────────────────────────────────────────────────
   const clone = path.join(TMP, 'clone');
   t('a client can clone through the proxy', () => {
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'clone', '-q', URL_, clone], { encoding: 'utf8' });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', 'clone', '-q', URL_, clone], { encoding: 'utf8' });
     assert.ok(fs.existsSync(path.join(clone, 'README.md')) === false || true);
     assert.match(git(clone, ['log', '--oneline']), /seed/);
   });
@@ -84,7 +84,7 @@ waitForListen(() => {
     git(clone, ['add', '.']);
     git(clone, ['commit', '-q', '-m', 'stuff and things']);
     let out = '', code = 0;
-    try { execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try { execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (e) { code = e.status; out = String(e.stdout || '') + String(e.stderr || ''); }
     assert.notStrictEqual(code, 0, 'the push must fail');
     assert.match(out, /commit-condom blocked this push/);
@@ -93,7 +93,7 @@ waitForListen(() => {
 
   t('--no-verify does not bypass the proxy gate either', () => {
     let code = 0, out = '';
-    try { execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '--no-verify', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try { execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '--no-verify', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (e) { code = e.status; out = String(e.stdout || '') + String(e.stderr || ''); }
     assert.notStrictEqual(code, 0, 'the push must still fail');
     assert.match(out, /commit-condom/);
@@ -111,7 +111,7 @@ waitForListen(() => {
     git(clone, ['add', 'src_c.js', 'src_d.js']); git(clone, ['commit', '-q', '-m', 'feat(src): add c and d (need modules)']);
     fs.writeFileSync(path.join(clone, 'docs.md'), 'd\n');
     git(clone, ['add', 'docs.md']); git(clone, ['commit', '-q', '-m', 'docs: add docs (none existed)']);
-    const out = execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const out = execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', 'origin', 'main'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.match(String(out) || 'ok', /.*/);
     const log = git(UP, ['log', '--oneline', 'main']);
     assert.match(log, /feat\(src\): add c and d/);
@@ -128,12 +128,12 @@ waitForListen(() => {
     fs.writeFileSync(path.join(clone, 'feature.md'), 'f\n');
     git(clone, ['add', 'feature.md']);
     git(clone, ['commit', '-q', '-m', 'feat: add feature notes (needs a branch)']);
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', 'origin', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', 'origin', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.match(git(UP, ['branch', '--list']), /feature/, 'the new branch must be upstream');
   });
 
   t('a branch DELETED through the proxy is removed upstream (real-PAT parity)', () => {
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', 'origin', '--delete', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', 'origin', '--delete', 'feature'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     const branches = git(UP, ['branch', '--list']);
     assert.ok(!/feature/.test(branches), 'feature must be gone upstream: ' + branches);
   });
@@ -150,17 +150,17 @@ waitForListen(() => {
     fs.writeFileSync(path.join(clone, 'forced.md'), 'one\n');
     git(clone, ['add', 'forced.md']);
     git(clone, ['commit', '-q', '-m', 'feat: add forced note (v1)']);
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     git(clone, ['commit', '-q', '--amend', '-m', 'feat: add forced note (v2 amended)']);
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', '--force', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', '--force', 'origin', 'forced'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.match(git(UP, ['log', '--oneline', 'forced']), /v2 amended/, 'the amended commit must be upstream');
   });
 
   t('a TAG pushed and then deleted matches a real PAT', () => {
     git(clone, ['tag', 'v-test']);
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', 'origin', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', 'origin', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.match(git(UP, ['tag', '--list']), /v-test/, 'the tag must be upstream');
-    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-C', clone, 'push', '-q', 'origin', '--delete', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', clone, 'push', '-q', 'origin', '--delete', 'v-test'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     assert.ok(!/v-test/.test(git(UP, ['tag', '--list'])), 'the tag must be gone upstream');
   });
 
