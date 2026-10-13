@@ -309,6 +309,44 @@ function formatRejection(result, { maxChars = 6000 } = {}) {
   return text;
 }
 
+
+/**
+ * The commit that is ABOUT to be created, read from the index rather than from history.
+ *
+ * A client `commit-msg` hook runs before the commit object exists, so `inspectShas` has
+ * nothing to read. This builds the same record shape from `git diff --cached`, which is what
+ * makes the file-count, diff-size and secret rules enforceable at COMMIT time instead of only
+ * at push time. Same rules, same `evaluate()`, one commit earlier — so a commit the proxy would
+ * reject is never created, and never reaches the reflog.
+ */
+function inspectStaged(repoDir, { subject = '', body = '' } = {}, policy = {}) {
+  const numstat = git(repoDir, ['diff', '--cached', '--numstat', '-M']);
+  const files = [];
+  for (const line of numstat.split('\n')) {
+    if (!line.trim()) continue;
+    const [add, del, ...rest] = line.split('\t');
+    const f = rest.join('\t');
+    if (!f) continue;
+    const a = add === '-' ? 0 : Number(add) || 0;
+    const d = del === '-' ? 0 : Number(del) || 0;
+    files.push({ path: f, added: a, deleted: d, binary: add === '-' });
+  }
+  const added = files.reduce((n, f) => n + f.added, 0);
+  const deleted = files.reduce((n, f) => n + f.deleted, 0);
+  const commit = {
+    sha: '', short: 'STAGED',
+    subject: String(subject).split('\n')[0].trim(),
+    body, author: '', email: '',
+    files, added, deleted, lines: added + deleted,
+  };
+  // Same guard as inspectShas: only pay for the patch when a pattern rule is configured.
+  if ((policy.block_diff_patterns || []).length) {
+    const out = git(repoDir, ['diff', '--cached', '--unified=0', '--no-color']);
+    commit.patch = out.length > 2 * 1024 * 1024 ? out.slice(0, 2 * 1024 * 1024) : out;
+  }
+  return commit;
+}
+
 module.exports = {
   ZERO_SHA,
   git,
@@ -316,6 +354,7 @@ module.exports = {
   listNewCommits,
   inspectCommits,
   inspectShas,
+  inspectStaged,
   evaluate,
   formatRejection,
   conventionalRegex,
