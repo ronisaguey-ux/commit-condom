@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const DEFAULTS = {
   max_diff_lines: 400,
@@ -49,6 +50,12 @@ function _candidatePaths(repoDir, explicit) {
     // A bare mirror has no worktree, so the proxy drops the policy beside the repo instead.
     out.push(path.join(repoDir, 'condom.json'));
   }
+  // Machine-wide policy. Without this the LOCAL hook only ever saw per-repo files and silently
+  // fell through to the built-in defaults — so the operator's own block_diff_patterns at
+  // ~/.config/commit-condom/policy.json were never enforced on a `git commit`, and editing that
+  // file changed nothing until a push. Order matters: per-repo still wins.
+  if (process.env.CC_HOME) out.push(path.join(process.env.CC_HOME, 'policy.json'));
+  out.push(path.join(os.homedir(), '.config', 'commit-condom', 'policy.json'));
   return out;
 }
 
