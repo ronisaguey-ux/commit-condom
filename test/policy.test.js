@@ -137,7 +137,10 @@ t('formatRejection of a passing result is empty', () => {
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-policy-'));
 const repo = path.join(TMP, 'r');
 fs.mkdirSync(repo, { recursive: true });
-const g = (args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+// /dev/null is a FILE; git falls back to .git/hooks and the machine-wide install now
+// populates those, so a fixture that must create an OVER-CAP commit has to point at an
+// empty DIRECTORY or its own commit is refused before the reader is ever exercised.
+const g = (args) => execFileSync('git', ['-c', 'core.hooksPath=/tmp/opencode/no-hooks', '-C', repo, ...args], { encoding: 'utf8' });
 g(['init', '-q', '-b', 'main']);
 g(['config', 'user.email', 'a@b']);
 g(['config', 'user.name', 't']);
