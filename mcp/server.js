@@ -80,7 +80,7 @@ const TOOLS = [
   },
   {
     name: 'cc_status',
-    description: 'Repository state at a glance: branch, staged vs unstaged files, whether the policy is being enforced, and the remaining session budget.',
+    description: 'Repository state at a glance: branch, staged vs unstaged files, whether the policy is being enforced.',
     inputSchema: { type: 'object', properties: { repo: { type: 'string' } } },
   },
   {
@@ -137,7 +137,7 @@ function callCheck(a) {
   const [base, head] = range.includes('..') ? range.split('..') : ['HEAD~1', range];
   const { policy, source } = loadPolicy({ repoDir: repo });
   const commits = P.inspectCommits(repo, base, head, policy);
-  const result = P.evaluate(commits, policy, { budget: policy.session_budget ? L.totals(repo) : undefined });
+  const result = P.evaluate(commits, policy);
   return {
     ok: result.ok,
     stats: result.stats,
@@ -155,13 +155,11 @@ function callStatus(a) {
   const lines = porcelain.split('\n').filter(Boolean);
   const staged = lines.filter((l) => l[0] !== ' ' && l[0] !== '?').length;
   const untracked = lines.filter((l) => l.startsWith('??')).length;
-  const budget = L.totals(repo);
   return {
     repo, branch, staged, untracked, modified: lines.length,
     policy_source: source,
     max_files_per_commit: policy.max_files_per_commit,
     max_diff_lines: policy.max_diff_lines,
-    budget: { ...budget, limit: policy.session_budget },
   };
 }
 
