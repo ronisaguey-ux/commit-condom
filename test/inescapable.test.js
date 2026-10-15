@@ -55,7 +55,6 @@ fs.writeFileSync(PERMISSIVE, JSON.stringify({
   max_subject_length: 400,
   chunking: {},
   block_diff_patterns: [],
-  session_budget: { max_commits: 9999, max_total_lines: 999999 },
 }));
 // The repo policy: strict.
 const STRICT = path.join(TMP, 'strict.json');
