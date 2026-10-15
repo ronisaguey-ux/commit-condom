@@ -10,7 +10,6 @@
  *   check --base X --head Y | --range X..Y
  *   plan                   propose how to split the working tree into atomic commits
  *   install-hooks --repo DIR [--bare]
- *   budget show | set --commits N --lines N | reset
  *   audit [--json]
  *
  * Exit codes: 0 pass · 1 policy violation · 2 usage/config error.
@@ -69,12 +68,11 @@ function gate(repoDir, base, head, ref, { isNewRepo = false, useRemoteBase = fal
   const commits = (useRemoteBase && P.ZERO_SHA.test(base || ''))
     ? P.inspectShas(repoDir, P.listNewCommits(repoDir, head), policy)
     : P.inspectCommits(repoDir, base, head, policy);
-  const budget = policy.session_budget ? L.totals(repoDir) : undefined;
-  const result = P.evaluate(commits, policy, { budget });
+  const result = P.evaluate(commits, policy);
   if (!result.ok) {
     return { result, policy, source, commits, text: P.formatRejection(result), ok: false };
   }
-  // Record what passed, so the budget advances and the audit chain grows.
+  // Record what passed, so the audit chain grows.
   for (const c of commits) {
     L.append(repoDir, { repo: repoDir, ref: ref || '', sha: c.sha, subject: c.subject, files: c.files.length, lines: c.lines, violations: 0 });
   }
@@ -265,36 +263,6 @@ function cmdInstallHooks() {
   return 0;
 }
 
-function cmdBudget() {
-  const repoDir = path.resolve(flag('--repo', process.cwd()));
-  const sub = argv[1] || 'show';
-  const state = path.join(repoDir, '.condom', 'budget.json');
-  if (sub === 'show') {
-    const t = L.totals(repoDir);
-    let cfg = {};
-    try { cfg = JSON.parse(fs.readFileSync(state, 'utf8')); } catch { /* none set */ }
-    const { policy } = loadPolicy({ repoDir });
-    out(JSON.stringify({ ...t, policy: policy.session_budget, override: cfg }, null, 2));
-    return 0;
-  }
-  if (sub === 'set') {
-    const cfg = {};
-    if (flag('--commits') !== undefined) cfg.max_commits = Number(flag('--commits'));
-    if (flag('--lines') !== undefined) cfg.max_total_lines = Number(flag('--lines'));
-    fs.mkdirSync(path.dirname(state), { recursive: true });
-    fs.writeFileSync(state, JSON.stringify(cfg, null, 2));
-    out(`budget override saved: ${JSON.stringify(cfg)}`);
-    return 0;
-  }
-  if (sub === 'reset') {
-    try { fs.unlinkSync(state); } catch { /* nothing to reset */ }
-    out('budget override cleared (policy defaults apply again)');
-    return 0;
-  }
-  err('cc budget: show | set --commits N --lines N | reset');
-  return 2;
-}
-
 function cmdAudit() {
   const repoDir = path.resolve(flag('--repo', process.cwd()));
   const entries = L.readEntries(repoDir);
@@ -353,7 +321,6 @@ function cmdHelp() {
   plan [--repo DIR]                        propose atomic commits for the working tree
   install-hooks --repo DIR [--bare]        install the hooks
   policy ls|set|rm [--data DIR]            the proxy's per-repo policy registry (unescapable)
-  budget show|set --commits N --lines N|reset
   audit [--json]                           show and verify the ledger chain
 `);
   return 0;
@@ -362,7 +329,7 @@ function cmdHelp() {
 const table = {
   'pre-receive': cmdPreReceive, 'pre-push': cmdPrePush, 'commit-msg': cmdCommitMsg,
   check: cmdCheck, plan: cmdPlan, 'install-hooks': cmdInstallHooks, policy: cmdPolicy,
-  budget: cmdBudget, audit: cmdAudit, help: cmdHelp,
+  audit: cmdAudit, help: cmdHelp,
 };
 const fn = table[cmd];
 const code = fn ? fn() : (err(`cc: unknown command '${cmd}' — run 'cc help'`), 2);

@@ -3,9 +3,8 @@
  * The session ledger — an append-only, hash-chained record of every commit that passed the
  * gate.
  *
- * Two jobs:
- *   1. give the session budget something to count (commits and changed lines so far)
- *   2. let `git_audit` prove the agent has not drifted — each entry commits to the one
+ * Its job:
+ *   let `git_audit` prove the agent has not drifted — each entry commits to the one
  *      before it, so a deleted or edited line breaks the chain and verify() says so
  *
  * The file is JSONL so it can be appended without rewriting and read with `tail`, and so a
@@ -86,16 +85,4 @@ function verify(repoDir) {
   return { ok: true, entries: entries.length, head: prevHash };
 }
 
-/** Totals for one session, for the budget check. */
-function totals(repoDir, session) {
-  const want = session || process.env.CC_SESSION || 'default';
-  let commits = 0, lines = 0;
-  for (const e of readEntries(repoDir)) {
-    if (e.session !== want) continue;
-    commits += 1;
-    lines += Number(e.lines) || 0;
-  }
-  return { session: want, commits, lines };
-}
-
-module.exports = { ledgerPath, readEntries, append, verify, totals, computeHash };
+module.exports = { ledgerPath, readEntries, append, verify, computeHash };
