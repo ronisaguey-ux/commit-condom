@@ -41,7 +41,6 @@ Rules come from a per-repo policy, or from `--policy`. All of them are optional;
 | `max_subject_length` | `72` | to move detail into the body |
 | `chunking.min_commits_for_files` | `{"3":2,"5":3,"10":5}` | how many commits the push needs |
 | `block_diff_patterns` | secret regexes | that a credential must be removed and rotated |
-| `session_budget` | `{max_commits, max_total_lines}` | that the session is out of budget and a human must raise it |
 
 Every rejection carries a **fix**, not just a verdict. An agent told only "rejected" retries the
 same monolith; an agent told `git add a.js b.js && git commit -m ...` usually complies.
@@ -134,7 +133,7 @@ so a plan that satisfies the tools will pass the gate.
 | `cc_plan` | propose atomic commits for the working tree, with suggested messages |
 | `cc_commit` | stage exactly these paths and commit, policy-checked before the index is touched |
 | `cc_check` | evaluate a range and return the violations without pushing |
-| `cc_status` | branch, staged/untracked counts, the policy in force, remaining budget |
+| `cc_status` | branch, staged/untracked counts, the policy in force |
 | `cc_audit` | the session ledger, hash-verified |
 
 ```
@@ -145,8 +144,7 @@ node mcp/server.js    # stdio MCP server, no dependencies
 
 Every accepted commit is appended to `.condom/ledger.jsonl`, each entry hashing the one before
 it. `cc audit` (or `cc_audit`) walks the chain and reports the first entry that does not match,
-so an edited or deleted line is detectable rather than invisible. It is also what the session
-budget counts.
+so an edited or deleted line is detectable rather than invisible.
 
 ## Honest limits
 
