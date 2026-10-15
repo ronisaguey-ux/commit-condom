@@ -28,7 +28,6 @@ const POLICY = {
   max_subject_length: 72,
   chunking: { min_commits_for_files: { 3: 2, 5: 3, 10: 5 } },
   block_diff_patterns: ['ghp_[A-Za-z0-9]{20,}'],
-  session_budget: { max_commits: 10, max_total_lines: 2000 },
 };
 
 const commit = (over = {}) => ({
@@ -100,19 +99,11 @@ t('chunking: the same 3 files across 2 commits passes', () => {
   assert.strictEqual(P.evaluate([a, b], POLICY).ok, true, JSON.stringify(codes(P.evaluate([a, b], POLICY))));
 });
 
-t('a budget is NOT enforced: only the per-commit rules apply', () => {
-  // There is no session budget by DEFAULT any more - a long-but-clean branch must not be
-  // refused for its length. The per-commit rules are the only gate.
+t('there is no session budget: only the per-commit rules apply', () => {
   const { DEFAULTS } = require('../src/config');
-  assert.strictEqual(DEFAULTS.session_budget, undefined, 'DEFAULTS must not carry a budget');
-  const bare = P.evaluate([commit()], POLICY);
-  assert.strictEqual(bare.ok, true, 'a clean commit passes with no budget passed in');
-  assert.deepStrictEqual(codes(bare), []);
-});
-
-t('a budget supplied by a caller is still honoured (opt-in only)', () => {
-  const r = P.evaluate([commit()], POLICY, { budget: { commits: 10, lines: 0 } });
-  assert.deepStrictEqual(codes(r), ['BUDGET_COMMITS']);
+  assert.strictEqual(DEFAULTS.session_budget, undefined);
+  const r = P.evaluate([commit()], { ...POLICY, session_budget: { max_commits: 1, max_total_lines: 1 } });
+  assert.deepStrictEqual(codes(r), [], 'a legacy session_budget key is ignored');
 });
 
 t('NON-VACUITY: the checker reports a violation it is built to catch', () => {

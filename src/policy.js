@@ -146,10 +146,9 @@ function compilePattern(pat) {
 
 /**
  * Evaluate a set of commits against the policy.
- * Returns { ok, violations, stats }. `budget` is { commits, lines } already used this
- * session (see ledger.js); pass it to enforce session_budget.
+ * Returns { ok, violations, stats }.
  */
-function evaluate(commits, policy = {}, { budget } = {}) {
+function evaluate(commits, policy = {}) {
   const violations = [];
   const maxFiles = Number(policy.max_files_per_commit ?? 0);
   const maxLines = Number(policy.max_diff_lines ?? 0);
@@ -242,29 +241,6 @@ function evaluate(commits, policy = {}, { budget } = {}) {
         });
       }
       break; // the highest matching threshold is the binding one
-    }
-  }
-
-  if (budget) {
-    const maxCommits = Number(policy.session_budget?.max_commits ?? 0);
-    const maxTotal = Number(policy.session_budget?.max_total_lines ?? 0);
-    const usedCommits = (budget.commits || 0) + commits.length;
-    const usedLines = (budget.lines || 0) + commits.reduce((n, c) => n + c.lines, 0);
-    if (maxCommits > 0 && usedCommits > maxCommits) {
-      violations.push({
-        code: 'BUDGET_COMMITS',
-        sha: '',
-        detail: `This would bring the session to ${usedCommits} commits (budget ${maxCommits}).`,
-        fix: `Stop and report. A human can raise the budget with \`cc budget set --commits <n>\`.`,
-      });
-    }
-    if (maxTotal > 0 && usedLines > maxTotal) {
-      violations.push({
-        code: 'BUDGET_LINES',
-        sha: '',
-        detail: `This would bring the session to ${usedLines} changed lines (budget ${maxTotal}).`,
-        fix: `Stop and report. A human can raise the budget with \`cc budget set --lines <n>\`.`,
-      });
     }
   }
 
