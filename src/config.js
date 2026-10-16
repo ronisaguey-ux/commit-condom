@@ -34,8 +34,14 @@ const DEFAULTS = {
   chunking: { min_commits_for_files: { 3: 2, 5: 3, 10: 5 } },
   block_diff_patterns: [
     '(?i)(ghp_[A-Za-z0-9]{20,})',
-    '(?i)(sk-[A-Za-z0-9]{20,})',
+    '(?i)(github_pat_[A-Za-z0-9_]{30,})',
+    '(?i)(sk-[A-Za-z0-9_-]{20,})',
     '(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----',
+    '(?i)(AKIA[0-9A-Z]{16})',
+    '(?i)(AIzaSy[A-Za-z0-9_-]{33})',
+    '(?i)((?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,})',
+    '(?i)(xox[baprs]-[0-9a-zA-Z]{10,48})',
+    '(?i)(aws_secret_access_key\\s*=\\s*[\'"][A-Za-z0-9/+=]{20,})',
   ],
 };
 
