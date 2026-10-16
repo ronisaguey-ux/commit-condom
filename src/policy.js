@@ -208,7 +208,8 @@ function evaluate(commits, policy = {}) {
     for (const pat of policy.block_diff_patterns || []) {
       let rx;
       try { rx = compilePattern(pat); } catch { continue; }
-      const hit = rx.exec(c.patch || '');
+      const textToScan = `${c.subject || ''}\n${c.body || ''}\n${c.patch || ''}`;
+      const hit = rx.exec(textToScan);
       if (hit) {
         const what = hit[0].length > 40 ? hit[0].slice(0, 40) + '…' : hit[0];
         violations.push({

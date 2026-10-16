@@ -87,6 +87,21 @@ t('a secret in the diff is rejected', () => {
   assert.deepStrictEqual(codes(r), ['BLOCKED_PATTERN']);
 });
 
+t('a secret in the commit subject or body is rejected', () => {
+  const inSubj = P.evaluate([commit({ subject: 'fix: leak ghp_' + 'A'.repeat(30) })], POLICY);
+  assert.ok(codes(inSubj).includes('BLOCKED_PATTERN'));
+  const inBody = P.evaluate([commit({ body: 'details: ghp_' + 'A'.repeat(30) })], POLICY);
+  assert.ok(codes(inBody).includes('BLOCKED_PATTERN'));
+});
+
+t('default patterns reject fine-grained PAT and dashed API keys', () => {
+  const { DEFAULTS } = require('../src/config');
+  const pat = P.evaluate([commit({ patch: '+token = "github_pat_' + 'A'.repeat(35) + '";' })], DEFAULTS);
+  assert.ok(codes(pat).includes('BLOCKED_PATTERN'), 'blocks fine-grained github_pat');
+  const ant = P.evaluate([commit({ patch: '+key = "sk-ant-api03-' + 'A'.repeat(30) + '";' })], DEFAULTS);
+  assert.ok(codes(ant).includes('BLOCKED_PATTERN'), 'blocks dashed API keys');
+});
+
 t('chunking: 3 files in 1 commit must be split', () => {
   const files = ['a', 'b', 'c'].map((n) => ({ path: n, added: 1, deleted: 0 }));
   const r = P.evaluate([commit({ files, lines: 3 })], POLICY);
