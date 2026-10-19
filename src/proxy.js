@@ -50,7 +50,7 @@ function redact(s) {
  */
 function authedUrl(base, owner, repo, token) {
   const u = new URL(base);
-  if (token && /^https?:$/.test(u.protocol)) { u.username = token; u.password = ''; }
+  if (token && /^https?:$/.test(u.protocol)) { u.username = 'x-access-token'; u.password = token; }
   u.pathname = `${u.pathname.replace(/\/$/, '')}/${owner}/${repo}.git`;
   return u.toString();
 }
