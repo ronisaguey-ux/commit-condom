@@ -89,6 +89,25 @@ function listNewCommits(repoDir, newSha) {
   return out.split('\n').map((s) => s.trim()).filter(Boolean);
 }
 
+/**
+ * Commits a push adds that the remote does not already have, from a working clone.
+ *
+ * The pre-push hook runs in a clone, so it cannot compare against local refs: the branch it
+ * is pushing already points at `newSha`, and `--all` would exclude the very commits under
+ * review. `--remotes` is the remote's state instead — everything the remote already holds,
+ * on any branch. Excluding it together with the remote tip the ref moves from means a
+ * force-push that replaces a branch with a rebased history checks only its new commits,
+ * rather than re-reading commits that have been on main all along.
+ *
+ * A clone with no remote-tracking refs lists the whole history, which is the fail-closed
+ * answer for a first push.
+ */
+function listPushCommits(repoDir, base, newSha) {
+  const notOn = ZERO_SHA.test(base || '') ? [] : [base];
+  const out = git(repoDir, ['rev-list', '--reverse', newSha, '--not', ...notOn, '--remotes']);
+  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
 /** Turn a list of shas into the commit records the rules read. */
 function inspectShas(repoDir, shas, policy = {}) {
   return shas.map((sha) => {
@@ -339,6 +358,7 @@ module.exports = {
   git,
   listCommits,
   listNewCommits,
+  listPushCommits,
   inspectCommits,
   inspectShas,
   inspectStaged,

@@ -226,6 +226,12 @@ t('a force-push checks what the push adds, not history another ref has', () => {
   assert.deepStrictEqual(P.listCommits(repo, strayTip, newTip, 'refs/heads/feature'), [newTip]);
   // and the same holds for a new ref, where the local branch must not exclude itself
   assert.deepStrictEqual(P.listCommits(repo, '0'.repeat(40), newTip, 'refs/heads/feature'), [newTip]);
+
+  // the client pre-push hook works in a clone: it compares against the REMOTE's refs, so a
+  // published commit is dropped there too, and only the pushed commit is checked
+  g(['update-ref', 'refs/remotes/origin/main', published]);
+  assert.deepStrictEqual(P.listPushCommits(repo, strayTip, newTip), [newTip]);
+  g(['update-ref', '-d', 'refs/remotes/origin/main']);   // leave no remote refs for later fixtures
 });
 
 t('listNewCommits sees a new-branch push, where listCommits sees nothing', () => {
