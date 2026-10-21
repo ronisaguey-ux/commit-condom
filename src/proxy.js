@@ -168,6 +168,14 @@ function createProxy(cfg) {
     // registry (or the machine policy), NOT from the incoming commit, so a push cannot carry
     // in a weaker policy or delete the one in force.
     await run(process.execPath, [CC_BIN, 'install-hooks', '--repo', dir, '--bare']);
+    // A `--mirror` clone also copies the machine template's CLIENT hooks (pre-push,
+    // commit-msg) into the mirror. They are inert for incoming pushes, but the proxy's own
+    // forward push RUNS them — and in a bare mirror there are no remote-tracking refs, so the
+    // client-side reader sees the whole history and rejects the forward on commits the
+    // pre-receive gate has just accepted. Only pre-receive belongs on a server.
+    for (const name of ['pre-push', 'commit-msg']) {
+      try { fs.rmSync(path.join(dir, 'hooks', name), { force: true }); } catch { /* nothing to remove */ }
+    }
     const pol = policyFor(owner, repo);
     const mirrorPolicy = path.join(dir, 'condom.json');
     if (pol) {
@@ -207,7 +215,13 @@ function createProxy(cfg) {
     const url = authedUrl(config.upstream, owner, repo, config.token);
     const args = ['-C', dir, 'push', '--quiet', url, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'];
     for (const ref of deletedRefs) args.push(`:${ref}`);
-    const r = await run('git', args, { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    // The agent's global config rewrites https://github.com/ to this proxy, so the forward
+    // would be a push into ourselves: it re-syncs the mirror from upstream (undoing the refs
+    // just received), re-gates the same commits in the wrong context and can never reach
+    // GitHub. The forward is the one push that must go straight upstream, where the PAT in
+    // the URL is the only credential it needs, so the user's global config is not consulted.
+    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_GLOBAL: '/dev/null' };
+    const r = await run('git', args, { env });
     if (r.code !== 0) throw new Error(`forward to upstream failed: ${redact(r.stderr).trim().slice(0, 300)}`);
   }
 
