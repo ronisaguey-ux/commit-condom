@@ -53,13 +53,23 @@ function readPatch(repoDir, sha, cap = 2 * 1024 * 1024) {
 /**
  * The commits a push would introduce.
  *
- * A new ref (old is all-zeroes) is resolved with `--not --all`: in a pre-receive hook the
- * ref is not yet updated, so everything not reachable from any other ref is exactly what
- * this push adds. An update is the plain old..new range. `--reverse` gives oldest-first,
- * which is the order a human reads a change set in.
+ * Without `ref` this is the plain range: `old..new`, or `new --not --all` for a new ref. That
+ * is the right base for a WORKING clone (a local check, the MCP tool), where the local ref
+ * already points at `newSha`.
+ *
+ * With `ref` — the ref name a pre-receive hook is being asked to accept — the answer is
+ * instead "every commit reachable from `newSha` that no OTHER ref already has", with
+ * `--exclude <ref>` dropping the pushed ref from the comparison set. That is what a server
+ * push adds, and it is not the same as `old..new`: a force-push that replaces a branch whose
+ * old tip was unrelated gets an `old..new` range spanning the whole new history, so published
+ * commits on main are re-validated and the push is rejected on messages that are not part of
+ * the change. `--reverse` gives oldest-first, the order a human reads a change set in.
  */
-function listCommits(repoDir, oldSha, newSha) {
-  const range = ZERO_SHA.test(oldSha || '') ? [newSha, '--not', '--all'] : [`${oldSha}..${newSha}`];
+function listCommits(repoDir, oldSha, newSha, ref) {
+  const isNew = ZERO_SHA.test(oldSha || '');
+  const range = ref
+    ? [newSha, '--not', ...(isNew ? [] : [oldSha]), '--exclude', ref, '--all']
+    : (isNew ? [newSha, '--not', '--all'] : [`${oldSha}..${newSha}`]);
   const out = git(repoDir, ['rev-list', '--reverse', ...range]);
   return out.split('\n').map((s) => s.trim()).filter(Boolean);
 }
@@ -107,8 +117,8 @@ function inspectShas(repoDir, shas, policy = {}) {
 }
 
 /** Gather everything the rules need for one range, in one pass. */
-function inspectCommits(repoDir, oldSha, newSha, policy = {}) {
-  return inspectShas(repoDir, listCommits(repoDir, oldSha, newSha), policy);
+function inspectCommits(repoDir, oldSha, newSha, policy = {}, ref) {
+  return inspectShas(repoDir, listCommits(repoDir, oldSha, newSha, ref), policy);
 }
 
 function conventionalRegex(policy) {

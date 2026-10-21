@@ -196,6 +196,38 @@ t('a NEW ref lists exactly the commits no other ref has', () => {
   assert.deepStrictEqual(P.listCommits(repo, '0'.repeat(40), onMain), []);
 });
 
+t('a force-push checks what the push adds, not history another ref has', () => {
+  // The mirror case that rejected a rebased branch: the old tip it replaces is unrelated, so
+  // an `old..new` range spans the whole new history and drags published commits back through
+  // the gate. Naming the pushed ref makes the range "nothing another ref already has".
+  g(['checkout', '-q', '-b', 'feature', 'main']);
+  fs.writeFileSync(path.join(repo, 'src', 'f.js'), 'f\n');
+  g(['add', '.']);
+  g(['commit', '-q', '-m', 'feat(core): add f (need it)']);
+  const newTip = g(['rev-parse', 'HEAD']).trim();
+  const published = g(['rev-parse', 'HEAD~1']).trim();
+
+  // an unrelated history, standing in for the branch being replaced
+  g(['checkout', '-q', '--orphan', 'stray']);
+  fs.writeFileSync(path.join(repo, 'src', 's.js'), 's\n');
+  g(['add', '.']);
+  g(['commit', '-q', '-m', 'feat(core): add s (stray)']);
+  const strayTip = g(['rev-parse', 'HEAD']).trim();
+  g(['checkout', '-q', 'main']);
+  // pre-receive: the ref still holds the OLD tip when the hook runs
+  g(['update-ref', 'refs/heads/feature', strayTip]);
+
+  // old..new re-reads history that is not part of the change: the unrelated old tip makes
+  // the range span the whole branch, published commits included. That is the bug.
+  const plain = P.listCommits(repo, strayTip, newTip);
+  assert.ok(plain.includes(published), 'old..new must re-read the published commit to prove the fix');
+  assert.ok(plain.length > 1, 'the unrelated old tip must widen the range');
+  // naming the pushed ref reduces it to the commit the push actually adds
+  assert.deepStrictEqual(P.listCommits(repo, strayTip, newTip, 'refs/heads/feature'), [newTip]);
+  // and the same holds for a new ref, where the local branch must not exclude itself
+  assert.deepStrictEqual(P.listCommits(repo, '0'.repeat(40), newTip, 'refs/heads/feature'), [newTip]);
+});
+
 t('listNewCommits sees a new-branch push, where listCommits sees nothing', () => {
   // The client pre-push case that used to fail OPEN. The local branch ref points at the pushed
   // commit, so `--not --all` (correct on the server) excludes it and returns EMPTY — the gate
