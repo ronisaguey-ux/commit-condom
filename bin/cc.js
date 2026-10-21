@@ -123,11 +123,12 @@ function cmdPrePush() {
     const base = (!remoteSha || P.ZERO_SHA.test(remoteSha)) ? null : remoteSha;
     let commits;
     try {
-      // A new remote ref must be compared against the REMOTE, not against local refs: the local
-      // branch points at localSha, so `--not --all` would exclude the commits being pushed and
-      // the gate would silently pass. `listNewCommits` uses `--not --remotes` for that case.
+      // Both cases compare against the REMOTE, not against local refs: the local branch points
+      // at localSha, so `--not --all` would exclude the commits being pushed and the gate would
+      // silently pass. `listPushCommits` drops what any remote-tracking ref already has, which
+      // also stops a rebased force-push from re-reading main's history.
       commits = base
-        ? P.inspectCommits(repoDir, base, localSha, loadPolicy({ repoDir }).policy)
+        ? P.inspectShas(repoDir, P.listPushCommits(repoDir, base, localSha), loadPolicy({ repoDir }).policy)
         : P.inspectShas(repoDir, P.listNewCommits(repoDir, localSha), loadPolicy({ repoDir }).policy);
     } catch (e) {
       // Failing to inspect is NOT the same as passing. Say so loudly, and do not silently
