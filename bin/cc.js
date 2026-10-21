@@ -67,7 +67,7 @@ function gate(repoDir, base, head, ref, { isNewRepo = false, useRemoteBase = fal
   // left open in `cc check` either.
   const commits = (useRemoteBase && P.ZERO_SHA.test(base || ''))
     ? P.inspectShas(repoDir, P.listNewCommits(repoDir, head), policy)
-    : P.inspectCommits(repoDir, base, head, policy);
+    : P.inspectCommits(repoDir, base, head, policy, ref);
   const result = P.evaluate(commits, policy);
   if (!result.ok) {
     return { result, policy, source, commits, text: P.formatRejection(result), ok: false };
