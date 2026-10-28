@@ -77,7 +77,7 @@ function loadPolicy({ repoDir, policyPath } = {}) {
       const parsed = JSON.parse(raw);
       return { policy: { ...DEFAULTS, ...parsed }, source: p };
     } catch (e) {
-      if (e.code === 'ENOENT') continue;      // not present — try the next candidate
+      if (e.code === 'ENOENT' || e.code === 'ENOTDIR') continue;      // not present — try the next candidate
       if (e instanceof SyntaxError) throw new Error(`invalid policy JSON in ${p}: ${e.message}`);
       throw e;
     }
