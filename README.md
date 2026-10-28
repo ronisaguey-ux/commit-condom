@@ -41,9 +41,52 @@ Rules come from a per-repo policy, or from `--policy`. All of them are optional;
 | `max_subject_length` | `72` | to move detail into the body |
 | `chunking.min_commits_for_files` | `{"3":2,"5":3,"10":5}` | how many commits the push needs |
 | `block_diff_patterns` | secret regexes | that a credential must be removed and rotated |
+| `gitleaks.enabled` | `true` | that the scanner found a credential, and where |
 
 Every rejection carries a **fix**, not just a verdict. An agent told only "rejected" retries the
 same monolith; an agent told `git add a.js b.js && git commit -m ...` usually complies.
+
+## The optional second gate: gitleaks
+
+The regex net above only knows the shapes someone wrote down. A real scanner is available as a
+second gate, and it is **off by default** — every push must not pay for a scan it did not ask for.
+
+```json
+{
+  "gitleaks": {
+    "enabled": true,
+    "binary": "gitleaks",
+    "config": "",
+    "timeout": 120
+  }
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | turn the gate on for this policy |
+| `binary` | `gitleaks` | path or name on `PATH` |
+| `config` | `""` | TOML config carrying allowlists; empty means gitleaks' own rules plus `<repo>/.gitleaks.toml` |
+| `timeout` | `120` | seconds before the scan is abandoned |
+| `extra_args` | `[]` | extra CLI flags, e.g. `["--max-decode-depth","0"]` |
+
+`CC_GITLEAKS=1` forces the gate on and `CC_GITLEAKS=0` forces it off, whatever the policy says —
+useful for one push without editing a registry you may not own. The scan runs on the same range
+the push is validating, and in `commit-msg` on the staged index so the secret is caught before the
+commit exists.
+
+**It fails closed.** Enabled but unrunnable — binary missing, a range git cannot resolve, a
+non-zero exit that is not "leaks found" — is a rejection, not a pass. A gate that silently
+degrades to "no findings" is worse than no gate, because it is trusted.
+
+Findings name the rule id, the file and the line, and **never echo the secret** — the rejection
+goes into logs and agent transcripts. The verdict is one-way: gitleaks can add violations to the
+regex gate's result, never remove one. To clear a false positive, add an allowlist entry to the
+config named in `policy.gitleaks.config` or a `gitleaks:allow` comment on the line; do not disable
+the gate.
+
+Install: `brew install gitleaks`, or a release binary from
+<https://github.com/gitleaks/gitleaks/releases> (single static binary, no runtime).
 
 ## Making the policy unskipable
 
@@ -157,7 +200,10 @@ so an edited or deleted line is detectable rather than invisible.
   advertisement; a push that arrives while an external human push is in flight will be computed
   against the pre-fetch refs and simply be rejected rather than silently accepted.
 - **`block_diff_patterns` is a regex net, not a scanner.** It catches the shapes it is
-  configured with. It is not a substitute for a real secret scanner.
+  configured with. It is not a substitute for a real secret scanner — turn on `gitleaks` when you
+  need one, and read the fail-closed note above before you do.
+- **A gitleaks allowlist is a promise.** Every `gitleaks:allow` comment is a credential the gate
+  will step over, and nothing in the stack re-checks that promise later.
 - **The policy rules are structural.** They can make a change reviewable; they cannot make it
   correct, and a well-formed commit can still be wrong.
 

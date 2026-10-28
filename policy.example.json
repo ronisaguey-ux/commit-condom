@@ -7,6 +7,12 @@
   "chunking": {
     "min_commits_for_files": { "3": 2, "5": 3, "10": 5 }
   },
+  "gitleaks": {
+    "enabled": false,
+    "binary": "gitleaks",
+    "config": "",
+    "timeout": 120
+  },
   "block_diff_patterns": [
     "(?i)(ghp_[A-Za-z0-9]{20,})",
     "(?i)(sk-[A-Za-z0-9]{20,})",
