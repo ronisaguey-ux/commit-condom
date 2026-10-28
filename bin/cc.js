@@ -22,6 +22,7 @@ const { execFileSync } = require('child_process');
 const { loadPolicy } = require('../src/config');
 const P = require('../src/policy');
 const L = require('../src/ledger');
+const G = require('../src/gitleaks');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0] || 'help';
@@ -69,14 +70,21 @@ function gate(repoDir, base, head, ref, { isNewRepo = false, useRemoteBase = fal
     ? P.inspectShas(repoDir, P.listNewCommits(repoDir, head), policy)
     : P.inspectCommits(repoDir, base, head, policy, ref);
   const result = P.evaluate(commits, policy);
+  // The optional second secret gate. Only paid for when a policy or CC_GITLEAKS turns it on,
+  // and it can only ADD violations — the regex gate's verdict is never softened.
+  const gl = G.scan(repoDir, { base, head, policy });
+  if (!gl.ok) {
+    result.violations.push(...gl.violations);
+    result.ok = false;
+  }
   if (!result.ok) {
-    return { result, policy, source, commits, text: P.formatRejection(result), ok: false };
+    return { result, policy, source, commits, text: P.formatRejection(result), ok: false, gitleaks: gl };
   }
   // Record what passed, so the audit chain grows.
   for (const c of commits) {
     L.append(repoDir, { repo: repoDir, ref: ref || '', sha: c.sha, subject: c.subject, files: c.files.length, lines: c.lines, violations: 0 });
   }
-  return { result, policy, source, commits, text: '', ok: true };
+  return { result, policy, source, commits, text: '', ok: true, gitleaks: gl };
 }
 
 // ── hook: pre-receive (the remote-side gate — the reason --no-verify cannot help) ──
@@ -101,7 +109,8 @@ function cmdPreReceive() {
       messages.push(g.text);
     } else {
       const note = isNewRepo ? ' [new repo: bulk import allowed]' : '';
-      messages.push(`commit-condom: ${g.result.stats.commits} commit(s) accepted on ${ref} (${g.result.stats.files} files, ${g.result.stats.lines} lines).${note}`);
+      const gl = (g.gitleaks && g.gitleaks.enabled) ? ` [${g.gitleaks.note}]` : '';
+      messages.push(`commit-condom: ${g.result.stats.commits} commit(s) accepted on ${ref} (${g.result.stats.files} files, ${g.result.stats.lines} lines).${note}${gl}`);
     }
   }
   for (const m of messages) {
@@ -141,6 +150,8 @@ function cmdPrePush() {
     // No remote-tracking refs yet = the first push to a new remote = a new repo's bulk import.
     const policy = effectivePolicy(rawPolicy, noRefs(repoDir, 'refs/remotes/'));
     const result = P.evaluate(commits, policy);
+    const gl = G.scan(repoDir, { base: base || '', head: localSha, policy });
+    if (!gl.ok) { result.violations.push(...gl.violations); result.ok = false; }
     if (!result.ok) { rejected = true; messages.push(P.formatRejection(result)); }
   }
   for (const m of messages) for (const l of m.split('\n')) err(l);
@@ -176,6 +187,8 @@ function cmdCommitMsg() {
   // and secret rules unenforced locally — the three that actually bite.
   const staged = P.inspectStaged(repoDir, { subject, body }, policy);
   const result = P.evaluate([staged], policy);
+  const gl = G.scan(repoDir, { staged: true, policy });
+  if (!gl.ok) { result.violations.push(...gl.violations); result.ok = false; }
   if (!result.ok) {
     err('commit-condom: this commit would be REJECTED ON PUSH — refusing it locally so it is never created.');
     err(P.formatRejection(result).split('\n')
